@@ -21,7 +21,8 @@ on top. It worked as a proof of concept, but the approach had real limits:
 
 ## What changed in v2
 
-The pipeline was rebuilt from scratch:
+The pipeline was rebuilt from scratch — no code, config, or design remains from the
+old approach:
 
 - **Diffusion-inpainting synthesis instead of cut-and-paste.** A Stable Diffusion
   inpainting model hallucinates debris directly into real water scenes, with correct
@@ -105,7 +106,7 @@ pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/river.j
 
 ## Evaluation metric: Surface Plastic Contamination Index
 
-$$\text{Contamination (\%)} = \frac{\sum \text{plastic mask pixels}}{\text{total image pixels}} \times 100$$
+$$\text{Contamination} = \frac{\sum \text{plastic mask pixels}}{\text{total image pixels}} \times 100\%$$
 
 Computed at inference time from the predicted instance masks. Useful for tracking
 pollution density over time or across river sectors.
