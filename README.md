@@ -7,7 +7,7 @@ a YOLO segmentation model on PyTorch.
 
 ## How it started
 
-v1 of this project (August 2026) was a cut-and-paste synthetic data pipeline in the
+v1 of this project was a cut-and-paste synthetic data pipeline in the
 spirit of [akTwelve/cocosynth](https://github.com/akTwelve/cocosynth): transparent PNG
 cutouts of plastic items were composited onto water photos with PIL/OpenCV, contours
 were extracted into COCO-format JSON, and a Mask R-CNN (TensorFlow 2.x port) was trained
@@ -21,8 +21,7 @@ on top. It worked as a proof of concept, but the approach had real limits:
 
 ## What changed in v2
 
-The pipeline was rebuilt from scratch — no code, config, or design remains from the
-old approach:
+The pipeline was rebuilt from scratch:
 
 - **Diffusion-inpainting synthesis instead of cut-and-paste.** A Stable Diffusion
   inpainting model hallucinates debris directly into real water scenes, with correct
