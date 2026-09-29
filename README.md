@@ -98,10 +98,9 @@ pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/river.j
 
 ## Using your own images
 
-- **Backgrounds** (`data/backgrounds/`): real water photos — calm water, ripples, waves,
+- **Backgrounds** (`data/backgrounds/`): real water photos ie. calm water, ripples, waves,
   sediment, sun glints, overcast. The more varied, the better the model generalizes.
 - **Test images** (`test_images/`): unseen polluted water photos for evaluation.
-- No foreground cutouts needed anymore — the diffusion model generates the debris.
 
 ## Evaluation metric: Surface Plastic Contamination Index
 
