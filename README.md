@@ -21,8 +21,7 @@ on top. It worked as a proof of concept, but the approach had real limits:
 
 ## What changed in v2
 
-The pipeline was rebuilt from scratch — no code, config, or design remains from the
-old approach:
+The pipeline was rebuilt from scratch:
 
 - **Diffusion-inpainting synthesis instead of cut-and-paste.** A Stable Diffusion
   inpainting model hallucinates debris directly into real water scenes, with correct
