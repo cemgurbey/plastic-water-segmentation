@@ -1,120 +1,124 @@
-# 🌊 Plastic Residue Detection on Water Bodies using CocoSynth & Mask R-CNN
+# Plastic Residue Detection on Water Bodies
 
-A computer vision and deep learning project inspired by [akTwelve/cocosynth](https://github.com/akTwelve/cocosynth) (Adam Kelly / Immersive Limit), tailored specifically for detecting and segmenting plastic pollution and floating debris across rivers, lakes, canals, and marine environments.
+Instance segmentation for detecting plastic pollution — bottles, bags, and debris —
+floating on rivers, lakes, canals, and marine surfaces. The pipeline generates its own
+photorealistic training data with diffusion models, refines masks with SAM 2, and trains
+a YOLO segmentation model on PyTorch.
 
----
+## How it started
 
-## 🎯 Project Features
+v1 of this project (August 2026) was a cut-and-paste synthetic data pipeline in the
+spirit of [akTwelve/cocosynth](https://github.com/akTwelve/cocosynth): transparent PNG
+cutouts of plastic items were composited onto water photos with PIL/OpenCV, contours
+were extracted into COCO-format JSON, and a Mask R-CNN (TensorFlow 2.x port) was trained
+on top. It worked as a proof of concept, but the approach had real limits:
 
-- **Synthetic COCO Dataset Generation (CocoSynth)**: Automatically generates thousands of photorealistic training images with instance-level polygon segmentations by compositing transparent plastic cutouts onto diverse water body backgrounds.
-- **Aquatic Augmentations**: Implements random 360° rotation, scale variation, color/brightness jitter (simulating sunlight glints and cloud shadows), and alpha edge-softening for natural aquatic blending.
-- **COCO Format Export**: Computes external contours with OpenCV, simplifies polygon vertices with Shapely, and outputs valid Microsoft COCO JSON (`coco_instances.json`).
-- **Procedural Demo Generator**: Generates procedural water textures and transparent plastic shapes out of the box, allowing immediate execution and verification without needing initial image uploads.
-- **Mask R-CNN on TensorFlow 2.x & Keras**: Employs `akTwelve/Mask_RCNN` with transfer learning from pretrained COCO weights (`mask_rcnn_coco.h5`).
-- **Water Surface Contamination Metric**: Quantifies the percentage of the water surface area covered by detected plastic litter during real-world inference.
+- Pasted cutouts carry telltale edges, flat lighting, and no water interaction —
+  models learn the compositing artifacts, not the debris.
+- Mask R-CNN on the TF 2.x fork is slow to train, heavy to deploy, and pinned to an
+  aging stack (TF < 2.16, Keras < 3, NumPy < 2, imgaug).
+- The whole design was derivative of the cocosynth workflow rather than its own thing.
 
----
+## What changed in v2
 
-## 📂 Project Structure
+The pipeline was rebuilt from scratch — no code, config, or design remains from the
+old approach:
+
+- **Diffusion-inpainting synthesis instead of cut-and-paste.** A Stable Diffusion
+  inpainting model hallucinates debris directly into real water scenes, with correct
+  lighting, reflections, and water interaction. Region prompts are class-conditioned
+  (`plastic_bottle`, `plastic_bag`, `plastic_debris`).
+- **SAM 2 mask refinement.** Each inpainted region is refined into a precise instance
+  mask with Segment Anything 2 (via Ultralytics), replacing hand-tuned contour
+  extraction. Falls back to the eroded inpaint region when SAM is unavailable.
+- **YOLO11 segmentation on PyTorch instead of Mask R-CNN on TensorFlow.** Faster
+  training, simpler deployment (ONNX/TensorRT export in one line), and a modern
+  dependency stack.
+- **Native YOLO-seg labels** instead of COCO JSON — one normalized polygon per line,
+  no annotation adapter needed.
+- **Modern Python packaging:** `src/` layout, `pyproject.toml` (PEP 621), type hints,
+  dataclass configs, `pathlib` throughout, `ruff` linting, and CLI entry points
+  (`pws-synthesize`, `pws-train`, `pws-infer`).
+
+## Project structure
 
 ```text
 plastic-water-segmentation/
-├── plastic_water_segmentation_cocosynth.ipynb   # Master Jupyter Notebook
-├── cocosynth_engine.py                         # Reusable Python module for synthetic data generation
-├── requirements.txt                            # Python environment dependencies
-├── README.md                                   # Documentation and quickstart guide
-├── data/
-│   ├── foregrounds/                            # Transparent PNG cutouts of plastic items
-│   │   ├── plastic_bottle/
-│   │   ├── plastic_bag/
-│   │   └── plastic_debris/
-│   └── backgrounds/                            # Water surface photos (rivers, lakes, oceans)
-├── dataset/
-│   ├── train/                                  # Generated synthetic training images & annotations
-│   │   ├── images/
-│   │   └── coco_instances.json
-│   └── val/                                    # Generated synthetic validation images & annotations
-│       ├── images/
-│       └── coco_instances.json
-├── test_images/                                # Real-world water photos for inference
-└── logs/                                       # Trained model checkpoints & TensorBoard logs
+├── pyproject.toml                 # packaging, dependencies, ruff config
+├── requirements.txt               # pip install -r (Colab friendly)
+├── notebooks/
+│   └── plastic_water_segmentation.ipynb   # end-to-end walkthrough
+└── src/plastic_water_seg/
+    ├── config.py                  # Category prompts, SynthConfig, TrainConfig
+    ├── cli.py                     # pws-synthesize / pws-train / pws-infer
+    ├── data/
+    │   ├── synth.py               # DatasetSynthesizer orchestration
+    │   ├── painters.py            # DiffusionInpainter (SOTA) + ProceduralPainter (fallback)
+    │   ├── masks.py               # polygon export, SAM 2 refinement
+    │   └── demo_assets.py         # procedural water backgrounds
+    ├── training/train.py          # Ultralytics YOLO training wrapper
+    └── eval/inference.py          # inference + contamination metric
 ```
 
----
+Generated artifacts (`dataset/`, `logs/`, `data/`) are gitignored.
 
-## 🚀 Quickstart Guide
+## Quickstart
 
-### Option A: Running in Google Colab (Recommended for GPU Training)
-1. Open [Google Colab](https://colab.research.google.com/) and upload `plastic_water_segmentation_cocosynth.ipynb` and `cocosynth_engine.py`.
-2. Select a GPU runtime: **Runtime > Change runtime type > T4 GPU**.
-3. Run the notebook cells sequentially.
-4. If you don't upload images, the notebook will automatically generate procedural demo assets so you can see the entire synthetic generation, training, and inference pipeline run immediately!
+### Option A — Google Colab (recommended)
 
-### Option B: Running Locally with Jupyter
+1. Open the notebook in Colab (badge at the top of
+   `notebooks/plastic_water_segmentation.ipynb`) with a GPU runtime.
+2. Run the cells: install → configure → generate demo backgrounds → synthesize →
+   inspect → train → infer.
 
-1. Clone or open this repository directory:
-   ```bash
-   cd /Users/cemgurbey/.gemini/antigravity/scratch/plastic-water-segmentation
-   ```
-2. Create and activate a Python 3.8 - 3.10 virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Launch Jupyter Notebook:
-   ```bash
-   jupyter notebook plastic_water_segmentation_cocosynth.ipynb
-   ```
-
----
-
-## 📸 Preparing Your Own Images
-
-When you are ready to train on your custom images:
-
-### 1. Transparent Plastic Cutouts (`data/foregrounds/<category>/`)
-- Save plastic items as **PNG with transparency (RGBA)**.
-- Isolate the foreground using tools like Photoshop, GIMP, [remove.bg](https://www.remove.bg/), or [Segment Anything (SAM)](https://segment-anything.com/).
-- Organize items into category subfolders:
-  - `data/foregrounds/plastic_bottle/`
-  - `data/foregrounds/plastic_bag/`
-  - `data/foregrounds/plastic_debris/`
-
-### 2. Water Body Backgrounds (`data/backgrounds/`)
-- Save photos of water bodies as `.jpg` or `.png`.
-- Collect varied conditions: calm water, ripples, waves, river sediment, sun reflections, and overcast lighting.
-
-### 3. Real-World Test Images (`test_images/`)
-- Place unseen photos of polluted water bodies into `test_images/` to evaluate model generalization.
-
----
-
-## 💻 Standalone Synthetic Generation via CLI
-
-You can also run the synthetic data generator directly from the terminal:
+### Option B — Local
 
 ```bash
-# Generate procedural demo assets first (if needed)
-python3 cocosynth_engine.py --demo --train-count 100 --val-count 20
+git clone https://github.com/cemgurbey/plastic-water-segmentation.git
+cd plastic-water-segmentation
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e ".[notebook]"
 ```
 
----
+Then either use the notebook or the CLI:
 
-## 📊 Evaluation Metric: Water Contamination Ratio
+```bash
+# 1. Synthesize a dataset (diffusion inpainting; needs a GPU)
+pws-synthesize --backgrounds data/backgrounds --output dataset \
+    --method diffusion --train-count 500 --val-count 100 --demo-backgrounds
 
-The inference module computes the **Surface Plastic Contamination Index (%)**:
-$$\text{Contamination Ratio (\%)} = \frac{\sum \text{Plastic Mask Pixels}}{\text{Total Water Surface Pixels}} \times 100$$
+#    ...or the lightweight procedural fallback (CPU-friendly smoke test)
+pws-synthesize --method procedural --train-count 60 --val-count 15 --demo-backgrounds
 
-This metric enables environmental researchers and municipal river monitors to track pollution density over time or across different river sectors.
+# 2. Train
+pws-train --data dataset/dataset.yaml --model yolo11m-seg.pt --epochs 100
 
----
+# 3. Inference + contamination index
+pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/river.jpg
+```
 
-## 🔗 References & Credits
+## Using your own images
 
-- [akTwelve/cocosynth](https://github.com/akTwelve/cocosynth) - Adam Kelly (Immersive Limit)
-- [akTwelve/Mask_RCNN](https://github.com/akTwelve/Mask_RCNN) - TensorFlow 2.x port of Matterport Mask R-CNN
-- [COCO Dataset](https://cocodataset.org/) - Common Objects in Context Format
+- **Backgrounds** (`data/backgrounds/`): real water photos — calm water, ripples, waves,
+  sediment, sun glints, overcast. The more varied, the better the model generalizes.
+- **Test images** (`test_images/`): unseen polluted water photos for evaluation.
+- No foreground cutouts needed anymore — the diffusion model generates the debris.
+
+## Evaluation metric: Surface Plastic Contamination Index
+
+$$\text{Contamination (\%)} = \frac{\sum \text{plastic mask pixels}}{\text{total image pixels}} \times 100$$
+
+Computed at inference time from the predicted instance masks. Useful for tracking
+pollution density over time or across river sectors.
+
+## Requirements
+
+- Python 3.10+
+- GPU strongly recommended for diffusion synthesis and training (Colab T4 works);
+  the procedural painter and CPU inference run anywhere.
+- Key dependencies: `torch`, `ultralytics`, `diffusers`, `transformers`, `accelerate`,
+  `opencv-python`, `pillow`, `numpy`, `matplotlib`, `pyyaml`, `tqdm`, `rich`.
+
+## License
+
+MIT

@@ -1,18 +1,19 @@
-# Plastic Residue Water Body Segmentation Dependencies
-# Compatible with Python 3.8 - 3.10 and TensorFlow 2.x
-
-tensorflow>=2.4.0,<2.16.0
-keras>=2.4.0,<3.0.0
-numpy>=1.19.5,<2.0.0
-scipy>=1.7.0
-scikit-image>=0.18.0
-pillow>=8.3.0
-opencv-python>=4.5.0
-shapely>=1.8.0
-pycocotools>=2.0.4
-matplotlib>=3.4.0
-imgaug>=0.4.0
-h5py>=3.1.0
-tqdm>=4.60.0
-ipywidgets>=7.6.0
-jupyter>=1.0.0
+# Modern Python stack (PyTorch + Ultralytics + Diffusers). Install with:
+#   pip install -e ".[notebook]"
+# or on Colab:
+#   pip install -r requirements.txt
+torch>=2.2.0
+ultralytics>=8.3.0
+diffusers>=0.30.0
+transformers>=4.40.0
+accelerate>=0.30.0
+safetensors>=0.4.0
+opencv-python>=4.9.0
+pillow>=10.0.0
+numpy>=1.26.0
+matplotlib>=3.8.0
+pyyaml>=6.0
+tqdm>=4.66.0
+rich>=13.0
+jupyter>=1.0
+ipykernel>=6.0
