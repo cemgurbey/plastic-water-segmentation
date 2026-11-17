@@ -1,8 +1,12 @@
 # Generated artifacts — never commit
-dataset/
-logs/
-data/
-test_images_staging/
+# Anchored to the repo root with a leading slash: an unanchored `data/`
+# also matches src/plastic_water_seg/data/, and hatchling drops
+# gitignored paths from the wheel — which broke `pip install .` in Colab
+# (ModuleNotFoundError: No module named 'plastic_water_seg.data').
+/dataset/
+/logs/
+/data/
+/test_images_staging/
 *.pt
 *.pth
 *.h5
