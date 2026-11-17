@@ -126,6 +126,7 @@ Latest results live in `results/` — one visualization per image plus
 `summary.csv` (detections per class and contamination index), for both the
 repo-trained model (`results/repo_model/`) and a COCO-pretrained
 `yolo11n-seg` baseline (`results/coco_baseline/`, bottle detections only).
+See [`results/README.md`](results/README.md) for the numbers and what they mean.
 Expect the honest gap: a model trained on the small procedural demo set
 misses a lot on real photos, while the COCO baseline finds bottles reliably
 but knows nothing about bags or debris. Closing that gap is what the
