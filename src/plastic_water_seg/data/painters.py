@@ -71,8 +71,14 @@ class DiffusionInpainter(DebrisPainter):
 
         dtype = torch.float16 if self.device == "cuda" else torch.float32
         log.info("Loading inpainting model %s on %s", self.model_id, self.device)
+        # NOTE: runwayml/stable-diffusion-inpainting ships only fp16
+        # safetensors weights (no plain .safetensors files), so loading
+        # with use_safetensors=True and no variant raises
+        # "Could not find the necessary `safetensors` weights". variant="fp16"
+        # matches the float16 dtype used on CUDA; on CPU the weights are
+        # cast to float32 on load.
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            self.model_id, torch_dtype=dtype, use_safetensors=True
+            self.model_id, torch_dtype=dtype, use_safetensors=True, variant="fp16"
         )
         if self.device == "cuda":
             # Keeps VRAM usage low enough for Colab T4 GPUs.
