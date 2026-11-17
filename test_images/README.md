@@ -17,6 +17,27 @@ for evaluating a trained model on data it never saw during training
   (`plastic_bottle` / `plastic_bag` / `plastic_debris`) from a human look at
   each photo. These are *not* ground-truth labels — they say what plastic is
   visible, not where it is. Do not use them as training labels.
+- **Ground-truth labels:** `labels/` holds one YOLO-seg `.txt` per image
+  (same stem, `class_id x1 y1 x2 y2 …` with normalized coords; classes
+  0 `plastic_bottle`, 1 `plastic_bag`, 2 `plastic_debris`). Built by
+  locating each object, refining it to a mask with SAM 2
+  (`sam2.1_b`, box-prompted), and exporting the polygon — every label was
+  verified on overlay sheets. Conventions: distinct bottles and bags are
+  labelled individually; dense debris fields (Marilao patches, trash rivers,
+  microplastics close-ups) are labelled as **one `plastic_debris` region**
+  covering the visible field, so debris recall measures region detection,
+  not fragment counting. Images 22 (river foam/scum) has no clear plastic
+  and is intentionally unlabelled. These labels are what the notebook §8
+  metrics (precision/recall/F1 at mask IoU ≥ 0.5) are computed against.
+  Known limitations, kept on purpose rather than hidden: 05 labels 48 of
+  100+ visible bottles on the bank (small background bottles unlabelled);
+  25 covers the mid-stream waste but not the foreground waste below the
+  railing (SAM latched onto the railing there); 03's region includes algae
+  by necessity (fragments sit on the algae mat); 40 labels the foreground
+  bottles but not the scattered background debris (natural seaweed and
+  driftwood, not clearly separable plastic). A model detection on an
+  unlabelled object counts as a false positive against this set, so treat
+  the metrics as a lower bound, not an exact score.
 - **What to expect:** these are hard, real-world images — small and
   translucent bottles, dense debris patches, algae, glare, and clutter. A
   model trained only on the small procedural demo set will miss a lot here;

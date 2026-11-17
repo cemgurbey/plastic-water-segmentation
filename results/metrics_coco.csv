@@ -1,0 +1,2 @@
+class,tp,fp,fn,precision,recall,f1,mean_iou
+plastic_bottle,0,0,137,0.0,0.0,0.0,0.0

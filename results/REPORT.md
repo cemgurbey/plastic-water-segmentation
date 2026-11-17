@@ -14,11 +14,11 @@ both at confidence 0.35. Full method and per-image tables:
 | | Previous results | What we found |
 |---|---|---|
 | Real-photo evaluation | None existed — no test images, no trained weights, no results | 40 photos evaluated, results in `results/` |
-| Repo model, overall | Synthetic val mask mAP50 **0.799** (15 images) | Detections in **18/40** photos; mean contamination **2.58%** |
-| Repo model, bottles | Synthetic val mask mAP50 **0.986** | **2 of 14** bottle-tagged photos got a bottle detection |
-| Repo model, bags | Synthetic val mask mAP50 **0.486** (weakest class) | Catch-all: **20 of 26** detections were "bag" |
-| Repo model, debris | Synthetic val mask mAP50 **0.926** | **2** debris detections in 24 debris-tagged photos |
-| COCO baseline | Expected: "finds bottles, misses bags/debris" | **0/40** bottles — even at conf 0.10, only 1 in 40 |
+| Repo model, overall | Synthetic val mask mAP50 **0.799** (15 images) | Detections in **18/40** photos; per-class P/R/F1 @ mask IoU 0.5: bottle 0.00/0.00, bag 0.00/0.00, debris 0.50/0.02 — **1 true positive in 213** ground-truth instances; mean contamination **8.58%** (corrected — the first figure, 2.58%, was understated by a mask-resolution bug, §3) |
+| Repo model, bottles | Synthetic val mask mAP50 **0.986** | **0 of 137** bottles matched at IoU 0.5 (2 photos got a bottle prediction, neither matched; nearest miss is image 01 at IoU 0.37) |
+| Repo model, bags | Synthetic val mask mAP50 **0.486** (weakest class) | Catch-all: **20 of 26** detections were "bag", **0 matched** at IoU 0.5 — mostly giant masks on algae/vegetation |
+| Repo model, debris | Synthetic val mask mAP50 **0.926** | **1 of 45** debris instances matched (the plate in image 28, IoU 0.64) |
+| COCO baseline | Expected: "finds bottles, misses bags/debris" | **0/40** bottles — even at conf 0.10, only 1 in 40; 0 true positives in 213 instances |
 | Colab notebook | Would not run (import errors) | Runs, after three fixes (see §5) |
 
 The headline is the gap between synthetic validation and real photos: a model that
@@ -64,6 +64,18 @@ Before this work the project had **no real-photo results at all**:
   per-image visualizations and `summary.csv` files. The COCO baseline was
   additionally re-run at conf 0.25 and 0.10 to check the zero result was
   real and not a threshold artifact.
+- **Ground-truth labels (added 2026-11-17).** Every photo now has a
+  hand-verified YOLO-seg label file (`test_images/labels/`, 213 instances:
+  137 bottle, 31 bag, 45 debris), built by locating each object, refining
+  it to a mask with SAM 2, and checking every overlay. Dense debris fields
+  are labelled as one region, not per fragment, so debris recall measures
+  region detection. Image 22 (river foam) is intentionally unlabelled.
+  Known gaps are documented in `test_images/README.md` — the labels are a
+  lower bound on what's visible, not a perfect census. With labels in
+  place, the models are scored with proper per-class precision/recall/F1
+  at mask IoU ≥ 0.5 (`results/metrics.csv`, `results/metrics_coco.csv`;
+  new module `src/plastic_water_seg/eval/metrics.py`, wired into the
+  notebook §8).
 
 ## 3. What we found — the repo-trained model
 
@@ -71,33 +83,62 @@ Before this work the project had **no real-photo results at all**:
 |---|---|
 | Images with ≥ 1 detection | **18 / 40** |
 | Images with zero detections | 22 / 40 |
-| Mean contamination index | **2.58%** |
+| Mean contamination index | **8.58%** (corrected; see the mask note) |
 | Total objects detected | 26 (4 bottle, 20 bag, 2 debris) |
+| Ground-truth instances | 213 (137 bottle, 31 bag, 45 debris) |
+| True positives @ mask IoU 0.5 | **1** (the plate in image 28, IoU 0.64) |
+| Bottle recall @ IoU 0.5 | **0.00** (0/137) |
+| Bag recall @ IoU 0.5 | **0.00** (0/31) |
+| Debris recall @ IoU 0.5 | **0.02** (1/45) |
+| Overall P / R / F1 @ IoU 0.5 | **0.04 / 0.00 / 0.01** |
 | Bottle-tagged photos with a bottle detection | **2 / 14** (images 01, 32) |
 | Bottle-tagged photos with no detection at all | 9 / 14 |
 | Dense Marilao River patches detected (13–16) | **0 / 4** |
+
+**Mask note — the contamination correction.** The first published mean
+contamination (2.58%) was wrong: `predict()` used Ultralytics'
+`res.masks.data`, which is at the model's processed resolution
+(e.g. 448×640), not the photo's — so mask areas were counted against the
+wrong pixel total and mask IoU could not be computed at all. `predict()`
+now rasterizes the `masks.xy` polygons at the photo's own resolution.
+Detection counts are unaffected; the corrected mean contamination is
+**8.58%** — and that number is itself mostly false positives (see failure
+mode 1).
+
+**The class-agnostic nuance.** Scored strictly per class at IoU 0.5, the
+model finds almost nothing. But 8 of its 26 detections overlap real
+plastic at IoU ≥ 0.25 (3 at ≥ 0.5) — it often senses plastic and labels
+it wrong. Images 38 and 30 both overlap real debris regions at IoU ~0.6
+with the wrong class. So the failure is class confusion plus coarse
+masks, not total blindness — which is what the diffusion training run
+needs to fix.
 
 Failure modes, in order of importance:
 
 1. **Class confusion — "bag" became the catch-all.** 20 of the 26 detections
    were `plastic_bag`, including debris nests, reeds and algae. The bag class
    was already the weakest on synthetic validation (mask mAP50 0.486), and on
-   real photos it absorbs everything the model cannot classify.
-2. **Transparent bottles are missed.** Only 2 of 14 bottle-tagged photos got a
-   bottle detection. The large, clearly visible Danube bottle in image 12 got
-   nothing. Procedural training draws opaque rounded rectangles; real bottles
-   are transparent, horizontal and half-submerged, with refraction and
+   real photos it absorbs everything the model cannot classify. The giant
+   "bag" masks on algae and vegetation (35% of the frame in image 25, 29%
+   in images 03 and 09) are also what inflates the contamination index.
+2. **Transparent bottles are missed.** 0 of 137 ground-truth bottles matched
+   at IoU 0.5. The large, clearly visible Danube bottle in image 12 got
+   nothing, and the nearest miss — the clean bottle in image 01 — scores
+   only IoU 0.37 because the model's mask is 2.7× the true mask.
+   Procedural training draws opaque rounded rectangles; real bottles are
+   transparent, horizontal and half-submerged, with refraction and
    reflections the training data never showed.
 3. **Dense scenes are invisible.** All four dense Marilao River patches
    (13–16) returned zero detections. Training caps at 4 objects per image
    with no overlap allowed, so dense multi-object scenes are out of
    distribution.
-4. **False positives on texture and people.** Half a frame of algae was called
-   a bag (image 03, 11.5% "coverage"), and a "bottle" box landed on a
-   person's head (image 32, 38% confidence).
+4. **False positives on texture and people.** A third of the frame of algae
+   was called a bag (image 03, 29.4% "coverage"), and a "bottle" box landed
+   on a person's head (image 32, 38% confidence).
 5. **What worked:** the clean, isolated bottle in image 01 — detected at 63%
-   with a good mask. The pipeline works when the object looks like the
-   training data; it fails when it doesn't.
+   with a good mask — and the plate in image 28, the one true positive. The
+   pipeline works when the object looks like the training data; it fails
+   when it doesn't.
 
 ![Repo model on real photos: hits, misses and failure modes](figures/real_photo_examples.jpg)
 

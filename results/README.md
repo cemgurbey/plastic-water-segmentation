@@ -18,7 +18,9 @@ which is the point of this folder.
 
 ## `repo_model/` — the repo's own trained model
 
-- **18/40** images with at least one detection; mean contamination index **2.58%**.
+- **18/40** images with at least one detection; mean contamination index
+  **8.58%** (corrected — the first published figure, 2.58%, understated it;
+  see the mask note below).
 - 26 objects total: 4× `plastic_bottle`, 20× `plastic_bag`, 2× `plastic_debris`.
 - What it got right: the clean isolated bottle in `01_bottle_blue_water`
   (63% confidence, good mask). What it got wrong: class confusion everywhere
@@ -29,9 +31,48 @@ which is the point of this folder.
 - Per-image numbers: [`repo_model/summary.csv`](repo_model/summary.csv);
   one visualization per image in the same folder.
 
+### Ground-truth metrics (mask IoU ≥ 0.5) — `metrics.csv`
+
+The 40 photos now have hand-verified ground-truth labels
+(`test_images/labels/`, 213 instances: 137 bottle, 31 bag, 45 debris;
+method and known limitations in `test_images/README.md`), so the model is
+scored properly instead of by detection counts:
+
+| Class | TP | FP | FN | Precision | Recall | F1 | Mean IoU |
+|---|---|---|---|---|---|---|---|
+| plastic_bottle | 0 | 4 | 137 | 0.00 | 0.00 | 0.00 | 0.00 |
+| plastic_bag | 0 | 20 | 31 | 0.00 | 0.00 | 0.00 | 0.00 |
+| plastic_debris | 1 | 1 | 44 | 0.50 | 0.02 | 0.04 | 0.64 |
+| **Overall** | **1** | **25** | **212** | **0.04** | **0.00** | **0.01** | **0.64** |
+
+The single true positive is the plate in image 28 (IoU 0.64). The nearest
+miss is the bottle in image 01 (IoU 0.37 — the model's mask is 2.7× the
+true mask, so it fails the 0.5 bar despite finding the bottle). The
+picture is a little less bleak class-agnostically: 8 of the 26 detections
+overlap real plastic at IoU ≥ 0.25, and 3 at ≥ 0.5 — the model often
+senses plastic but labels it wrong, calling debris regions "bag" (images
+38 and 30 both overlap real debris at IoU ~0.6, with the wrong class).
+The 8.58% mean contamination is itself mostly false positives: giant
+"bag" masks on algae and vegetation — 35% of the frame in image 25,
+29% in images 03 and 09.
+
+### Mask note — why the contamination figure changed
+
+The first `summary.csv` was computed with a bug in `predict()`: it used
+`res.masks.data`, which Ultralytics returns at the model's processed
+resolution (e.g. 448×640), not the photo's resolution — so mask areas were
+counted against the wrong pixel total and mask IoU could not be computed
+at all. `predict()` now rasterizes the `masks.xy` polygons at the photo's
+own resolution (fixed in `src/plastic_water_seg/eval/inference.py`),
+which is also what makes the ground-truth metrics above possible. The
+detection counts are unaffected; only the contamination values changed
+(2.58% → 8.58%).
+
 ## `coco_baseline/` — COCO-pretrained `yolo11n-seg`, bottle class only
 
-- **0/40** images with a bottle detection at confidence 0.35.
+- **0/40** images with a bottle detection at confidence 0.35 — so
+  against the 137 ground-truth bottles: 0 TP, 0 FP, 137 FN, recall 0.00
+  (`metrics_coco.csv`).
 - This was checked, not assumed: the model loads and detects other things
   fine (at 0.10 it calls the bottle in `33` an "airplane" at 0.26 and a
   "boat" at 0.24). Re-running all 40 images at 0.25 still finds 0 bottles;

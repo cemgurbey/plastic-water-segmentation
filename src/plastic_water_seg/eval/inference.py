@@ -40,11 +40,16 @@ def predict(
     boxes = res.boxes.xyxy.cpu().numpy() if n else np.zeros((0, 4))
     scores = res.boxes.conf.cpu().numpy() if n else np.zeros(0)
     class_ids = res.boxes.cls.cpu().numpy().astype(int) if n else np.zeros(0, dtype=int)
-    masks = (
-        (res.masks.data.cpu().numpy() > 0.5)
-        if res.masks is not None
-        else np.zeros((0, *image.shape[:2]), dtype=bool)
-    )
+    # NOTE: res.masks.data is at the model's processed resolution, NOT the
+    # original image size — rasterize the masks.xy polygons instead, which
+    # are in original-image coordinates. (Using .data directly made masks
+    # the wrong shape for IoU and understated the contamination index.)
+    import cv2
+
+    masks = np.zeros((n, *image.shape[:2]), dtype=bool)
+    if res.masks is not None:
+        for i, poly in enumerate(res.masks.xy):
+            cv2.fillPoly(masks[i], [np.round(poly).astype(np.int32)], True)
     return InferenceResult(
         image=image,
         boxes=boxes,
