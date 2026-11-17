@@ -2,7 +2,7 @@
 dataset/
 logs/
 data/
-test_images/
+test_images_staging/
 *.pt
 *.pth
 *.h5

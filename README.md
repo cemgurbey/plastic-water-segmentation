@@ -7,7 +7,7 @@ a YOLO segmentation model on PyTorch.
 
 ## How it started
 
-v1 of this project was a cut-and-paste synthetic data pipeline in the
+v1 of this project (August 2026) was a cut-and-paste synthetic data pipeline in the
 spirit of [akTwelve/cocosynth](https://github.com/akTwelve/cocosynth): transparent PNG
 cutouts of plastic items were composited onto water photos with PIL/OpenCV, contours
 were extracted into COCO-format JSON, and a Mask R-CNN (TensorFlow 2.x port) was trained
@@ -21,7 +21,8 @@ on top. It worked as a proof of concept, but the approach had real limits:
 
 ## What changed in v2
 
-The pipeline was rebuilt from scratch:
+The pipeline was rebuilt from scratch — no code, config, or design remains from the
+old approach:
 
 - **Diffusion-inpainting synthesis instead of cut-and-paste.** A Stable Diffusion
   inpainting model hallucinates debris directly into real water scenes, with correct
@@ -98,9 +99,37 @@ pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/river.j
 
 ## Using your own images
 
-- **Backgrounds** (`data/backgrounds/`): real water photos ie. calm water, ripples, waves,
+- **Backgrounds** (`data/backgrounds/`): real water photos — calm water, ripples, waves,
   sediment, sun glints, overcast. The more varied, the better the model generalizes.
 - **Test images** (`test_images/`): unseen polluted water photos for evaluation.
+- No foreground cutouts needed anymore — the diffusion model generates the debris.
+
+## Real test images (`test_images/`)
+
+40 real photos of plastic on rivers, lakes, canals, and the sea — floating
+bottles, bags, and dense debris patches — for evaluating a trained model on
+data it never saw (training is synthetic). All are copyright-free (CC0,
+CC BY, CC BY-SA, or public domain), sourced via Openverse and Wikimedia
+Commons, resized to max 1280 px, with full attribution in
+`test_images/SOURCES.csv`. See `test_images/README.md` for how the set was
+built. The `visual_tag` column there is a rough human tag of what plastic is
+visible — not ground-truth labels.
+
+Run the evaluation from the notebook (§8) or the CLI:
+
+```bash
+# after training, one image at a time:
+pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/12_bottle_danube.jpg
+```
+
+Latest results live in `results/` — one visualization per image plus
+`summary.csv` (detections per class and contamination index), for both the
+repo-trained model (`results/repo_model/`) and a COCO-pretrained
+`yolo11n-seg` baseline (`results/coco_baseline/`, bottle detections only).
+Expect the honest gap: a model trained on the small procedural demo set
+misses a lot on real photos, while the COCO baseline finds bottles reliably
+but knows nothing about bags or debris. Closing that gap is what the
+diffusion-synthesis training path (GPU, Colab) is for.
 
 ## Evaluation metric: Surface Plastic Contamination Index
 
