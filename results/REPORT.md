@@ -167,6 +167,7 @@ Failure modes, in order of importance:
 | `8c89592` | `.gitignore` fix: the unanchored `data/` pattern also matched `src/plastic_water_seg/data/`, and hatchling drops gitignored paths from the wheel — `pip install .` built a package without the data subpackage (`ModuleNotFoundError: No module named 'plastic_water_seg.data'`). Artifact dirs are now anchored to the repo root (`/data/` …) |
 | `de476f3` | `USE_DIFFUSION` toggle in the notebook config cell (default off = procedural quickstart) |
 | `b1f6824` | Ground-truth labels for all 40 photos (213 instances) + `eval/metrics.py` (per-class P/R/F1 @ mask IoU 0.5, wired into notebook §8) + the `predict()` mask-resolution fix (contamination corrected 2.58% → 8.58%) + notebook set to the diffusion production config (200 train / 40 val, `yolo11m-seg`, 50 epochs) + this report's baseline corrected to the real metrics |
+| `2462926` | Diffusion model load fix: `variant="fp16"` in `DiffusionInpainter._load()` — `runwayml/stable-diffusion-inpainting` ships only fp16 safetensors weights, so loading with `use_safetensors=True` and no variant raised "Could not find the necessary `safetensors` weights" and killed the first Colab GPU run in the synthesis cell |
 
 ## 6. Why the gap, and what to do next
 
@@ -189,3 +190,69 @@ class the model never learned to separate. The fixes, in priority order:
 6. **Judge on §8, not on synthetic val.** Synthetic mAP overstated real
    performance by a wide margin; the 40-photo summary is the metric that
    matters now. Re-running §8 after each training change is the loop.
+
+## 7. Colab diffusion run (2026-11-17, 01:40–04:34 EST) — worse, not better
+
+The production recipe ran end-to-end on a T4 GPU: diffusion synthesis
+(200 train / 40 val, ~70 min), `yolo11m-seg`, 50 epochs (~20 min), §8
+evaluation. The result was **worse than the procedural baseline, not
+better** — the model detected nothing at all:
+
+| Metric | Procedural baseline (§3) | Diffusion run (§8, Colab) |
+|---|---|---|
+| Images with ≥ 1 detection | 18 / 40 | **0 / 40** |
+| Mean contamination index | 8.58% | **0.00%** |
+| True positives @ mask IoU 0.5 | 1 | **0** |
+| Bottle recall @ IoU 0.5 | 0.00 (0/137) | **0.00 (0/137)** |
+| Bag recall @ IoU 0.5 | 0.00 (0/31) | **0.00 (0/31)** |
+| Debris recall @ IoU 0.5 | 0.02 (1/45) | **0.00 (0/45)** |
+| Overall P / R / F1 @ IoU 0.5 | 0.04 / 0.00 / 0.01 | **0.00 / 0.00 / 0.00** |
+
+Raw files: [`diffusion_run/metrics.csv`](diffusion_run/metrics.csv),
+[`diffusion_run/summary.csv`](diffusion_run/summary.csv) (both downloaded
+from the Colab session; the session's `dataset/` and `runs/` do not
+persist to the repo).
+
+**This is consistent with the training outcome, not a pipeline error.**
+On the 40-image synthetic validation set (103 instances) the trained
+model scored mask mAP50 **0.0135** (box mAP50 0.0272), with box
+precision **0.006** at recall 0.72 — it proposes boxes everywhere at very
+low confidence, and nothing clears the 0.35 inference threshold, on
+synthetic images or real ones (the §8-style demo on a synthetic image
+also found 0 objects). Final-epoch losses were still high (box 2.39,
+seg 3.93, cls 3.50). A model that scores 0.01 mAP on its *own*
+validation distribution has not learned the training data — so the
+problem is upstream in the synthesized data, not the real-photo gap:
+the diffusion-inpainted objects and/or their SAM-refined masks are
+probably misaligned or unrealistic, teaching the model noise. (For
+contrast, the procedural run's 10-epoch `yolo11n-seg` at least detected
+26 objects.)
+
+**Run notes.** The first attempt died in the synthesis cell on the
+`safetensors` weights error (§5, `variant="fp16"` fix, commit
+`2462926`); the re-run initially failed the same way because the setup
+cell installed a stale pre-fix clone (the fix had been pushed minutes
+before the run started) and the old module stayed cached in the kernel
+— fixed by a session restart and a force-reinstall from the fixed
+commit, after which synthesis ran cleanly. The first "Run all" was also
+lost while the runtime was still connecting to the GPU. Total wall time
+2 h 53 m.
+
+**What to try next, in order:**
+
+1. **Look at the synthesized data first.** Regenerate a handful of
+   samples and inspect them with their labels: do the inpainted objects
+   look like plastic on water, and do the masks actually cover them?
+   If the masks are wrong, no amount of training helps — fix the
+   synthesis (prompts, SAM refinement, mask-to-polygon step) before
+   retraining.
+2. **Isolate the variable.** Train the same `yolo11m-seg` / 50-epoch
+   config on procedural data: if that learns (mAP well above 0.03 on
+   its own val), the problem is the diffusion data, not the training
+   setup.
+3. **Check the inference threshold only after (1) and (2).** Lowering
+   conf from 0.35 would surface detections, but with precision at
+   0.006 they'd be almost all false positives — it treats a symptom,
+   not the cause.
+4. More data (500+ images) helps only once the data is consistent;
+   scaling up noisy labels scales up the noise.
