@@ -168,6 +168,7 @@ Failure modes, in order of importance:
 | `de476f3` | `USE_DIFFUSION` toggle in the notebook config cell (default off = procedural quickstart) |
 | `b1f6824` | Ground-truth labels for all 40 photos (213 instances) + `eval/metrics.py` (per-class P/R/F1 @ mask IoU 0.5, wired into notebook §8) + the `predict()` mask-resolution fix (contamination corrected 2.58% → 8.58%) + notebook set to the diffusion production config (200 train / 40 val, `yolo11m-seg`, 50 epochs) + this report's baseline corrected to the real metrics |
 | `2462926` | Diffusion model load fix: `variant="fp16"` in `DiffusionInpainter._load()` — `runwayml/stable-diffusion-inpainting` ships only fp16 safetensors weights, so loading with `use_safetensors=True` and no variant raised "Could not find the necessary `safetensors` weights" and killed the first Colab GPU run in the synthesis cell |
+| `60dc418` | REPORT.md §7: the Colab diffusion run's results (0/40, all metrics 0.00 — worse than baseline) with the training diagnosis and next steps; raw CSVs in `results/diffusion_run/` |
 
 ## 6. Why the gap, and what to do next
 
