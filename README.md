@@ -94,7 +94,7 @@ pws-synthesize --method procedural --train-count 60 --val-count 15 --demo-backgr
 pws-train --data dataset/dataset.yaml --model yolo11m-seg.pt --epochs 100
 
 # 3. Inference + contamination index
-pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/river.jpg
+pws-infer --weights runs/segment/logs/yolo11m-seg/weights/best.pt --image test_images/river.jpg
 ```
 
 ## Using your own images
@@ -119,7 +119,7 @@ Run the evaluation from the notebook (§8) or the CLI:
 
 ```bash
 # after training, one image at a time:
-pws-infer --weights logs/yolo11m-seg/weights/best.pt --image test_images/12_bottle_danube.jpg
+pws-infer --weights runs/segment/logs/yolo11m-seg/weights/best.pt --image test_images/12_bottle_danube.jpg
 ```
 
 Latest results live in `results/` — one visualization per image plus

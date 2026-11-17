@@ -14,7 +14,9 @@ def train_yolo(data_yaml: str | Path, config: TrainConfig | None = None):
     """Fine-tune a pretrained YOLO-seg checkpoint on the synthetic dataset.
 
     Returns the trained Ultralytics YOLO model. Checkpoints and metrics are
-    written under ``<project>/<name>/``.
+    written under the trainer's save dir (``runs/segment/<project>/<name>/``
+    with current Ultralytics); use ``model.trainer.save_dir`` to find them
+    instead of assuming a fixed path.
     """
     from ultralytics import YOLO
 
@@ -34,5 +36,6 @@ def train_yolo(data_yaml: str | Path, config: TrainConfig | None = None):
         exist_ok=cfg.exist_ok,
         **cfg.extra_args,
     )
-    log.info("Training done. Best weights: %s/%s/weights/best.pt", cfg.project, cfg.name)
+    best = Path(model.trainer.save_dir) / "weights" / "best.pt"
+    log.info("Training done. Best weights: %s", best)
     return model
