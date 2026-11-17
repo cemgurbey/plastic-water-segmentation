@@ -166,6 +166,7 @@ Failure modes, in order of importance:
 | `309c917` | First results: `results/repo_model/`, `results/coco_baseline/`, `results/README.md` |
 | `8c89592` | `.gitignore` fix: the unanchored `data/` pattern also matched `src/plastic_water_seg/data/`, and hatchling drops gitignored paths from the wheel — `pip install .` built a package without the data subpackage (`ModuleNotFoundError: No module named 'plastic_water_seg.data'`). Artifact dirs are now anchored to the repo root (`/data/` …) |
 | `de476f3` | `USE_DIFFUSION` toggle in the notebook config cell (default off = procedural quickstart) |
+| `b1f6824` | Ground-truth labels for all 40 photos (213 instances) + `eval/metrics.py` (per-class P/R/F1 @ mask IoU 0.5, wired into notebook §8) + the `predict()` mask-resolution fix (contamination corrected 2.58% → 8.58%) + notebook set to the diffusion production config (200 train / 40 val, `yolo11m-seg`, 50 epochs) + this report's baseline corrected to the real metrics |
 
 ## 6. Why the gap, and what to do next
 
