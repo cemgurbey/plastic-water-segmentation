@@ -2,6 +2,7 @@
 
 from plastic_water_seg.data.demo_assets import generate_water_backgrounds
 from plastic_water_seg.data.painters import DebrisPainter, DiffusionInpainter, ProceduralPainter
+from plastic_water_seg.data.preview import label_size_stats, save_label_grid
 from plastic_water_seg.data.synth import DatasetSynthesizer
 
 __all__ = [
@@ -10,4 +11,6 @@ __all__ = [
     "DiffusionInpainter",
     "ProceduralPainter",
     "generate_water_backgrounds",
+    "label_size_stats",
+    "save_label_grid",
 ]

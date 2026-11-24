@@ -2,7 +2,8 @@
 
 The state-of-the-art path is :class:`DiffusionInpainter`, which uses a
 Stable Diffusion inpainting model to hallucinate photorealistic debris
-directly into the scene. :class:`ProceduralPainter` is a lightweight,
+directly into the scene. Each object is generated on a square crop around
+its region and pasted back, so nothing outside the region changes. :class:`ProceduralPainter` is a lightweight,
 dependency-free fallback that draws stylized debris with PIL.
 """
 
@@ -48,8 +49,12 @@ class DiffusionInpainter(DebrisPainter):
         num_inference_steps: int = 30,
         guidance_scale: float = 7.5,
         strength: float = 0.99,
+        resolution: int = 512,
+        context: float = 2.5,
     ) -> None:
         self.model_id = model_id
+        self.resolution = resolution
+        self.context = context
         self.num_inference_steps = num_inference_steps
         self.guidance_scale = guidance_scale
         self.strength = strength
@@ -95,26 +100,95 @@ class DiffusionInpainter(DebrisPainter):
         category: Category,
         rng: random.Random,
     ) -> Image.Image:
+        """Inpaint one object on a crop around ``region_mask`` and paste it back.
+
+        Working on a crop (instead of the whole image) matters twice over:
+        a small region gets the model's full resolution rather than a handful
+        of latent pixels, and the rest of the image is never pushed through the
+        VAE, so earlier objects are not blurred by later ones.
+        """
+        box = square_crop_box(region_mask, context=self.context)
+        if box is None:
+            return background
+        res = self.resolution
+        crop_img = background.convert("RGB").crop(box).resize((res, res), Image.LANCZOS)
+        crop_mask = region_mask.convert("L").crop(box).resize((res, res), Image.NEAREST)
+        # Slightly feather the mask so the inpaint blends into the water.
+        soft_mask = crop_mask.filter(ImageFilter.GaussianBlur(radius=2))
+        prompt = rng.choice(category.prompts)
+        generated = self._generate(
+            crop_img, soft_mask, prompt, category.negative_prompt, rng.randrange(2**31)
+        )
+        return paste_into_region(background, generated, region_mask, box)
+
+    def _generate(
+        self,
+        image: Image.Image,
+        mask: Image.Image,
+        prompt: str,
+        negative_prompt: str,
+        seed: int,
+    ) -> Image.Image:
+        """Run the diffusion pipeline on one square crop (``resolution`` px)."""
         self._load()
         import torch
 
-        w, h = background.size
-        # Slightly feather the mask so the inpaint blends into the water.
-        soft_mask = region_mask.filter(ImageFilter.GaussianBlur(radius=2))
-        generator = torch.Generator(device="cpu").manual_seed(rng.randrange(2**31))
+        generator = torch.Generator(device="cpu").manual_seed(seed)
         result = self._pipe(
-            prompt=category.prompt,
-            negative_prompt=category.negative_prompt,
-            image=background.convert("RGB").resize((w, h)),
-            mask_image=soft_mask.resize((w, h)),
-            height=h,
-            width=w,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            image=image,
+            mask_image=mask,
+            height=self.resolution,
+            width=self.resolution,
             num_inference_steps=self.num_inference_steps,
             guidance_scale=self.guidance_scale,
             strength=self.strength,
             generator=generator,
         )
         return result.images[0].convert("RGB")
+
+
+def square_crop_box(
+    region_mask: Image.Image, context: float = 2.5, min_side: int = 96
+) -> tuple[int, int, int, int] | None:
+    """Square crop around the mask's bounding box, ``context`` times its size.
+
+    The crop is clipped to the image; near a border it is shifted inward
+    rather than shrunk where possible.
+    """
+    mask_np = np.asarray(region_mask.convert("L")) > 127
+    ys, xs = np.nonzero(mask_np)
+    if len(xs) == 0:
+        return None
+    h, w = mask_np.shape
+    x1, y1, x2, y2 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+    side = int(max(x2 - x1, y2 - y1) * context)
+    side = min(max(side, min_side), w, h)
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    left = int(round(min(max(cx - side / 2, 0), w - side)))
+    top = int(round(min(max(cy - side / 2, 0), h - side)))
+    return left, top, left + side, top + side
+
+
+def paste_into_region(
+    background: Image.Image,
+    generated_crop: Image.Image,
+    region_mask: Image.Image,
+    box: tuple[int, int, int, int],
+    feather: float = 1.5,
+) -> Image.Image:
+    """Paste a generated crop back, changing only pixels inside the region.
+
+    A light feather softens the seam; pixels more than a few px outside the
+    region are guaranteed to stay identical to ``background``.
+    """
+    side_w, side_h = box[2] - box[0], box[3] - box[1]
+    patch = generated_crop.convert("RGB").resize((side_w, side_h), Image.LANCZOS)
+    full_patch = background.convert("RGB").copy()
+    full_patch.paste(patch, box[:2])
+    alpha = region_mask.convert("L").filter(ImageFilter.GaussianBlur(radius=feather))
+    return Image.composite(full_patch, background.convert("RGB"), alpha)
 
 
 class ProceduralPainter(DebrisPainter):
@@ -150,15 +224,16 @@ class ProceduralPainter(DebrisPainter):
         pad_x, pad_y = int(w * 0.12), int(h * 0.12)
 
         if category.name == "plastic_bottle":
+            radius = max(1, min(8, min(w, h) // 4))
             draw.rounded_rectangle(
-                [x1 + pad_x, y1 + pad_y, x2 - pad_x, y2 - pad_y], radius=8, fill=color
+                [x1 + pad_x, y1 + pad_y, x2 - pad_x, y2 - pad_y], radius=radius, fill=color
             )
-            # highlight stripe
-            draw.line(
-                [x1 + pad_x + 6, y1 + pad_y + 4, x1 + pad_x + 6, y2 - pad_y - 4],
-                fill=(255, 255, 255, 140),
-                width=3,
-            )
+            if min(w, h) > 24:  # highlight stripe, only where it fits
+                draw.line(
+                    [x1 + pad_x + 6, y1 + pad_y + 4, x1 + pad_x + 6, y2 - pad_y - 4],
+                    fill=(255, 255, 255, 140),
+                    width=3,
+                )
         elif category.name == "plastic_bag":
             cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
             pts = [

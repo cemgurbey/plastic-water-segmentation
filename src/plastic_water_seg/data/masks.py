@@ -76,3 +76,51 @@ def refine_masks_with_sam(
     except Exception as exc:  # noqa: BLE001 — refinement is best-effort
         log.warning("SAM refinement failed (%s); using coarse masks", exc)
         return None
+
+
+def changed_mask(
+    before: np.ndarray,
+    after: np.ndarray,
+    within: tuple[int, int, int, int],
+    threshold: float = 20.0,
+) -> np.ndarray:
+    """Pixels the painter actually changed, restricted to the ``within`` box.
+
+    ``before``/``after`` are HxWx3 uint8 RGB arrays. The result is cleaned with
+    a small morphological open/close so JPEG-level noise does not count.
+    """
+    diff = np.abs(after.astype(np.int16) - before.astype(np.int16)).mean(axis=2)
+    out = np.zeros(diff.shape, dtype=np.uint8)
+    x1, y1, x2, y2 = within
+    out[y1:y2, x1:x2] = diff[y1:y2, x1:x2] > threshold
+    kernel = np.ones((3, 3), np.uint8)
+    out = cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel)
+    out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel)
+    return out.astype(bool)
+
+
+def close_to_region(mask: np.ndarray, kernel_frac: float = 0.25) -> np.ndarray:
+    """Merge nearby fragments into one filled region (debris-field convention).
+
+    The real test set labels a dense debris field as a single region, so
+    synthetic debris is labelled the same way: close gaps between fragments
+    with a kernel proportional to the object's size and fill holes.
+    """
+    binary = (np.asarray(mask) > 0).astype(np.uint8)
+    box = bbox_of_mask(binary)
+    if box is None:
+        return binary.astype(bool)
+    size = max(box[2] - box[0], box[3] - box[1])
+    k = max(3, int(size * kernel_frac) | 1)
+    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled = np.zeros_like(closed)
+    cv2.drawContours(filled, contours, -1, 1, thickness=cv2.FILLED)
+    return filled.astype(bool)
+
+
+def expand_box(
+    box: tuple[int, int, int, int], pad: int, w: int, h: int
+) -> tuple[int, int, int, int]:
+    """Grow an (x1, y1, x2, y2) box by ``pad`` px, clipped to the image."""
+    return max(0, box[0] - pad), max(0, box[1] - pad), min(w, box[2] + pad), min(h, box[3] + pad)

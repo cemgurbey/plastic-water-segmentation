@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -23,18 +24,33 @@ class InferenceResult:
     scores: np.ndarray
 
 
-def predict(
-    weights: str | Path,
-    image_path: str | Path,
-    conf: float = 0.35,
-    device: str = "0",
-) -> InferenceResult:
-    """Run a trained YOLO-seg checkpoint on one image."""
+@lru_cache(maxsize=4)
+def load_model(weights: str | Path):
+    """Load a YOLO checkpoint once and reuse it (predict() is called per image)."""
     from ultralytics import YOLO
 
-    model = YOLO(str(weights))
+    return YOLO(str(weights))
+
+
+def predict(
+    weights,
+    image_path: str | Path,
+    conf: float = 0.35,
+    imgsz: int = 1024,
+    device: str | None = None,
+) -> InferenceResult:
+    """Run a trained YOLO-seg checkpoint on one image.
+
+    ``weights`` is a checkpoint path or an already-loaded Ultralytics model.
+    ``imgsz`` defaults to 1024 because most real floating plastic is tiny in
+    the frame; ``device=None`` lets Ultralytics pick the GPU if there is one
+    (the old ``"0"`` default crashed on CPU-only machines).
+    """
+    import cv2
+
+    model = load_model(str(weights)) if isinstance(weights, str | Path) else weights
     image = np.array(Image.open(image_path).convert("RGB"))
-    res = model.predict(image, conf=conf, device=device, verbose=False)[0]
+    res = model.predict(image, conf=conf, imgsz=imgsz, device=device, verbose=False)[0]
 
     n = 0 if res.boxes is None else len(res.boxes)
     boxes = res.boxes.xyxy.cpu().numpy() if n else np.zeros((0, 4))
@@ -42,14 +58,14 @@ def predict(
     class_ids = res.boxes.cls.cpu().numpy().astype(int) if n else np.zeros(0, dtype=int)
     # NOTE: res.masks.data is at the model's processed resolution, NOT the
     # original image size — rasterize the masks.xy polygons instead, which
-    # are in original-image coordinates. (Using .data directly made masks
-    # the wrong shape for IoU and understated the contamination index.)
-    import cv2
-
+    # are in original-image coordinates.
     masks = np.zeros((n, *image.shape[:2]), dtype=bool)
     if res.masks is not None:
         for i, poly in enumerate(res.masks.xy):
-            cv2.fillPoly(masks[i], [np.round(poly).astype(np.int32)], True)
+            if len(poly) >= 3:
+                buf = np.zeros(image.shape[:2], dtype=np.uint8)  # uint8: portable across OpenCV
+                cv2.fillPoly(buf, [np.round(poly).astype(np.int32)], 1)
+                masks[i] = buf.astype(bool)
     return InferenceResult(
         image=image,
         boxes=boxes,

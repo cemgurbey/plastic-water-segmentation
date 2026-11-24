@@ -38,11 +38,18 @@ dev = [
 
 [project.scripts]
 pws-synthesize = "plastic_water_seg.cli:synthesize"
+pws-preview = "plastic_water_seg.cli:preview"
+pws-boxes-to-seg = "plastic_water_seg.cli:boxes_to_seg"
 pws-train = "plastic_water_seg.cli:train"
 pws-infer = "plastic_water_seg.cli:infer"
+pws-eval = "plastic_water_seg.cli:evaluate"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plastic_water_seg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
